@@ -28,6 +28,7 @@ oxc_resolver = { version = "1.8.1", features = ["package_json_raw_json_api"] }
 paste = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
+rkyv = { workspace = true }
 rspack_ast = { path = "../rspack_ast" }
 rspack_database = { path = "../rspack_database", features = ["rayon"] }
 rspack_error = { path = "../rspack_error" }
