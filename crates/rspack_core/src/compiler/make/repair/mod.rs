@@ -104,7 +104,6 @@ pub fn repair(
         .options
         .profile
         .then(Box::<ModuleProfile>::default);
-      let module_graph = compilation.get_module_graph();
       let original_module_source = parent_module_identifier
         .and_then(|i| module_graph.module_by_identifier(&i))
         .and_then(|m| m.as_normal_module())

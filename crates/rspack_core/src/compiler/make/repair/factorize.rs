@@ -202,12 +202,10 @@ impl Task<MakeTaskContext> for FactorizeResultTask {
     } = *self;
     let artifact = &mut context.artifact;
     if !diagnostics.is_empty() {
-      if let Some(id) = original_module_identifier {
-        artifact.make_failed_module.insert(id);
-      } else {
+      for dep_id in &dependencies {
         artifact
           .make_failed_dependencies
-          .insert((dependencies[0], None));
+          .insert((*dep_id, original_module_identifier));
       }
     }
 
