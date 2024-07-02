@@ -47,6 +47,7 @@ pub struct NormalModuleFactoryHooks {
   /// So this hook is used to resolve inline loader (inline loader requests).
   // should move to ResolverFactory?
   pub resolve_loader: NormalModuleFactoryResolveLoaderHook,
+  pub resolve_in_scheme: NormalModuleFactoryResolveForSchemeHook, // Add this line
 }
 
 #[derive(Debug)]
@@ -282,9 +283,77 @@ impl NormalModuleFactory {
         .call(data, &mut resource_data)
         .await?;
       resource_data
-    } else {
-      // TODO: resource within scheme
+    } else if context_scheme.is_some() {
+      // resource within scheme
+      let mut resource_data = ResourceData::new(unresolved_resource.to_owned(), "".into());
+      let handled = plugin_driver
+        .normal_module_factory_hooks
+        .resolve_in_scheme
+        .call(data, &mut resource_data)
+        .await?;
+      if !handled.unwrap_or(false) {
+        // default resolve
+        // resource without scheme and with path
+        if unresolved_resource.is_empty() || unresolved_resource.starts_with(QUESTION_MARK) {
+          ResourceData::new(unresolved_resource.to_owned(), "".into())
+        } else {
+          let resolve_args = ResolveArgs {
+            importer,
+            issuer: data.issuer.as_deref(),
+            context: if context_scheme != Scheme::None {
+              self.options.context.clone()
+            } else {
+              data.context.clone()
+            },
+            specifier: unresolved_resource,
+            dependency_type: dependency.dependency_type(),
+            dependency_category: dependency.category(),
+            span: dependency.source_span(),
+            // take the options is safe here, because it
+            // is not used in after_resolve hooks
+            resolve_options: data.resolve_options.take(),
+            resolve_to_context: false,
+            optional: dependency.get_optional(),
+            file_dependencies: &mut file_dependencies,
+            missing_dependencies: &mut missing_dependencies,
+          };
 
+          // default resolve
+          let resource_data = resolve(resolve_args, plugin_driver).await;
+
+          match resource_data {
+            Ok(ResolveResult::Resource(resource)) => {
+              let uri = resource.full_path().display().to_string();
+              ResourceData::new(uri, resource.path)
+                .query(resource.query)
+                .fragment(resource.fragment)
+                .description_optional(resource.description_data)
+            }
+            Ok(ResolveResult::Ignored) => {
+              let ident = format!("{}/{}", data.context, unresolved_resource);
+              let module_identifier = ModuleIdentifier::from(format!("ignored|{ident}"));
+
+              let raw_module = RawModule::new(
+                "/* (ignored) */".to_owned(),
+                module_identifier,
+                format!("{ident} (ignored)"),
+                Default::default(),
+              )
+              .boxed();
+
+              return Ok(Some(ModuleFactoryResult::new_with_module(raw_module)));
+            }
+            Err(err) => {
+              data.add_file_dependencies(file_dependencies);
+              data.add_missing_dependencies(missing_dependencies);
+              return Err(err);
+            }
+          }
+        }
+      } else {
+        resource_data
+      }
+    } else {
       // default resolve
       // resource without scheme and with path
       if unresolved_resource.is_empty() || unresolved_resource.starts_with(QUESTION_MARK) {
